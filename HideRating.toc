@@ -1,0 +1,18 @@
+## Interface: 120100, 120000, 120001, 120005, 120007
+## Title: HideRating
+## Notes: Hides PvP ratings from the UI, optionally mutes whispers from strangers and hides the chat window.
+## Author: codyy
+## Version: @project-version@
+## SavedVariables: HideRatingDB
+## IconTexture: Interface\Icons\Achievement_PVP_A_A
+## X-Category: PvP
+## X-License: GPL-3.0-or-later
+# Fill these in after creating the projects, then commit -- the packager needs
+# them to know where to upload.
+# ## X-Curse-Project-ID:
+# ## X-Wago-ID:
+
+core.lua
+rating.lua
+chat.lua
+options.lua
