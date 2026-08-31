@@ -37,40 +37,57 @@ local function Hiding()
     return HR.Get("hideRating")
 end
 
--- Original values, so flipping the setting back off restores the real UI
--- without us having to ask Blizzard to redraw (and taint) anything.
-local savedText = setmetatable({}, { __mode = "k" })
+-- Masking is write-only: we never read a FontString back. Since 12.0 the
+-- scoreboard's rating text can be a "secret" value, and insecure code that
+-- compares one throws ("attempt to compare local 'current' (a secret string
+-- value, while execution tainted by ...)"). So instead of caching the real
+-- text to put back later, unhiding asks Blizzard to redraw the frame and the
+-- genuine values come back from the source.
 local savedShown = setmetatable({}, { __mode = "k" })
 local savedMouse = setmetatable({}, { __mode = "k" })
 
 local function MaskText(fontString, mask)
     if not fontString or not fontString.SetText then return end
-    mask = mask or MASK
 
-    if Hiding() then
-        local current = fontString:GetText()
-        -- Skip our own mask so a repeated pass can't overwrite the real value.
-        if current ~= mask then
-            savedText[fontString] = current
-        end
-        fontString:SetText(mask)
-    elseif savedText[fontString] ~= nil then
-        fontString:SetText(savedText[fontString])
-        savedText[fontString] = nil
+    fontString:SetText(mask or MASK)
+end
+
+local function ConcealFrame(frame)
+    if not frame or not frame.Hide then return end
+
+    if frame:IsShown() then
+        savedShown[frame] = true
+        frame:Hide()
     end
 end
 
-local function Conceal(frame)
-    if not frame or not frame.Hide then return end
-
-    if Hiding() then
-        if frame:IsShown() then
-            savedShown[frame] = true
-            frame:Hide()
-        end
-    elseif savedShown[frame] then
+-- Put back everything we hid, in one pass.
+local function RevealConcealed()
+    for frame in pairs(savedShown) do
         savedShown[frame] = nil
-        frame:Show()
+        if frame.Show then frame:Show() end
+    end
+
+    for header, wasEnabled in pairs(savedMouse) do
+        savedMouse[header] = nil
+        if header.EnableMouse then header:EnableMouse(wasEnabled) end
+    end
+end
+
+-- Ask Blizzard to repopulate whatever is on screen, which is what restores the
+-- real numbers over our masks. Anything not currently shown needs no help: it
+-- repopulates on its own the next time it opens.
+local function RequestRedraw()
+    if ConquestFrame and ConquestFrame:IsShown() and type(ConquestFrame_Update) == "function" then
+        ConquestFrame_Update(ConquestFrame)
+    end
+
+    if InspectPVPFrame and InspectPVPFrame:IsShown() and type(InspectPVPFrame_Update) == "function" then
+        InspectPVPFrame_Update(InspectPVPFrame)
+    end
+
+    if PVPMatchScoreboard and PVPMatchScoreboard.UpdateTable and PVPMatchScoreboard:IsShown() then
+        PVPMatchScoreboard:UpdateTable()
     end
 end
 
@@ -80,21 +97,23 @@ end
 
 local function MaskConquestFrame()
     local frame = ConquestFrame
-    if not frame then return end
+    if not frame or not Hiding() then return end
 
     for _, bracket in ipairs(BRACKETS) do
         local panel = frame[bracket]
         if panel then
             MaskText(panel.CurrentRating)
-            Conceal(panel.Tier)
+            ConcealFrame(panel.Tier)
         end
     end
 end
 
 local function MaskRatedPanelTier()
+    if not Hiding() then return end
+
     local inset = PVPQueueFrame and PVPQueueFrame.HonorInset
     local panel = inset and inset.RatedPanel
-    if panel then Conceal(panel.Tier) end
+    if panel then ConcealFrame(panel.Tier) end
 end
 
 -- Bracket tooltips repeat the rating and tier, so they go away wholesale
@@ -171,14 +190,14 @@ end
 --------------------------------------------------------------------------
 
 local function MaskInspectFrame()
-    if not InspectPVPFrame then return end
+    if not InspectPVPFrame or not Hiding() then return end
 
     for _, bracket in ipairs(BRACKETS) do
         local panel = InspectPVPFrame[bracket]
         if panel then
             MaskText(panel.Rating)
             MaskText(panel.Record, RECORD_MASK)
-            Conceal(panel.Tier)
+            ConcealFrame(panel.Tier)
         end
     end
 end
@@ -220,19 +239,14 @@ local function MaskMatchTable(tableBuilder)
             -- Sorting by a hidden column would still leak the ordering, so the
             -- header stops taking clicks. Headers come from a shared pool, so
             -- always restore the flag rather than only clearing it.
-            if header.EnableMouse then
-                if Hiding() then
-                    if savedMouse[header] == nil then
-                        savedMouse[header] = header:IsMouseEnabled()
-                    end
-                    header:EnableMouse(false)
-                elseif savedMouse[header] ~= nil then
-                    header:EnableMouse(savedMouse[header])
-                    savedMouse[header] = nil
+            if header.EnableMouse and Hiding() then
+                if savedMouse[header] == nil then
+                    savedMouse[header] = header:IsMouseEnabled()
                 end
+                header:EnableMouse(false)
             end
 
-            if column.cells then
+            if Hiding() and column.cells then
                 for _, cell in pairs(column.cells) do
                     MaskText(cell.text)
                 end
@@ -246,7 +260,7 @@ end
 -- update and finishes with Show() or Hide(), so hiding from a post-hook is
 -- self-repairing.
 local function HideMatchmakingText(fontString)
-    Conceal(fontString)
+    if Hiding() then ConcealFrame(fontString) end
 end
 
 -- Post-match summary. The earnings panel animates the rating change in, so
@@ -268,17 +282,18 @@ local function StopAnimations(frame)
 end
 
 local function ApplyToEarnings(container)
+    container = container or (PVPMatchResults and PVPMatchResults.content
+        and PVPMatchResults.content.earningsContainer)
     if not container then return end
 
     if Hiding() then
         StopAnimations(container)
         container:SetAlpha(0)
         container:EnableMouse(false)
-        Conceal(container)
+        ConcealFrame(container)
     else
         container:SetAlpha(1)
         container:EnableMouse(true)
-        Conceal(container)
     end
 end
 
@@ -372,16 +387,22 @@ HR.Subscribe(function(key)
     if key ~= nil and key ~= "hideRating" then return end
 
     UpdateToggleButton()
-    MaskConquestFrame()
-    MaskRatedPanelTier()
-    MaskInspectFrame()
-    if PVPMatchResults and PVPMatchResults.content then
-        ApplyToEarnings(PVPMatchResults.content.earningsContainer)
-    end
-    -- The scoreboard keeps its TableBuilder on whichever frame is hosting it.
-    for _, host in ipairs({ PVPMatchScoreboard, PVPMatchResults }) do
-        if host and host.tableBuilder then
-            MaskMatchTable(host.tableBuilder)
+
+    if Hiding() then
+        MaskConquestFrame()
+        MaskRatedPanelTier()
+        MaskInspectFrame()
+        ApplyToEarnings()
+
+        -- The scoreboard keeps its TableBuilder on whichever frame hosts it.
+        for _, host in ipairs({ PVPMatchScoreboard, PVPMatchResults }) do
+            if host and host.tableBuilder then
+                MaskMatchTable(host.tableBuilder)
+            end
         end
+    else
+        RevealConcealed()
+        ApplyToEarnings()
+        RequestRedraw()
     end
 end)

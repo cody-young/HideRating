@@ -24,8 +24,13 @@ A **Show Ratings / Hide Ratings** button sits in the bottom-left of the PvP
 window for when you do want a look, and it drives the same setting as the
 options panel and slash command.
 
-Nothing is masked destructively: turning a setting back off restores the
-values the game had already put on screen, no reload needed.
+Masking is one-directional by design: the addon writes over rating text but
+never reads it back, because since 12.0 the scoreboard's values are *secret*
+and inspecting one from an addon raises an error. Turning hiding off asks the
+game to redraw the affected frame instead, so the real numbers come back from
+the source.
+
+No reload is needed to toggle any of it.
 
 ## Commands
 
