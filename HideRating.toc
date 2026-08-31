@@ -7,10 +7,8 @@
 ## IconTexture: Interface\Icons\Achievement_PVP_A_A
 ## X-Category: PvP
 ## X-License: GPL-3.0-or-later
-# Fill these in after creating the projects, then commit -- the packager needs
-# them to know where to upload.
-# ## X-Curse-Project-ID:
-# ## X-Wago-ID:
+## X-Curse-Project-ID: 1675708
+## X-Wago-ID: vNAg2BKo
 
 core.lua
 rating.lua
