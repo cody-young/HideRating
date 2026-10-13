@@ -1,4 +1,4 @@
-## Interface: 120100, 120000, 120001, 120005, 120007
+## Interface: 120105, 120100, 120000, 120001, 120005, 120007
 ## Title: HideRating
 ## Notes: Hides PvP ratings from the UI, optionally mutes whispers from strangers and hides the chat window.
 ## Author: codyy
